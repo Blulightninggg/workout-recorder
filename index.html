@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IRONLOG - Workout Recorder</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'DM Sans', sans-serif; }
+    .carousel-container {
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .carousel-container::-webkit-scrollbar { display: none; }
+    .carousel-container > div { scroll-snap-align: start; }
+    .glow-amber { box-shadow: 0 0 40px rgba(251, 191, 36, 0.15); }
+    .glow-card { box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3); }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-slideUp { animation: slideUp 0.3s ease-out; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type="number"] { -moz-appearance: textfield; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+    
+    // Lucide icons
+    const Icon = ({ name, className }) => {
+      const iconRef = useRef(null);
+      useEffect(() => {
+        if (iconRef.current) {
+          iconRef.current.innerHTML = '';
+          const icon = lucide.createElement(lucide.icons[name]);
+          iconRef.current.appendChild(icon);
+        }
+      }, [name]);
+      return <span ref={iconRef} className={className} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} />;
+    };
+
+    // Utility functions
+    const generateId = () => Math.random().toString(36).substr(2, 9);
+    const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const PRESET_COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'];
+    const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
+    const getFirstDayOfMonth = (year, month) => new Date(year, month, 1).getDay();
+    const formatDuration = (minutes) => {
+      if (minutes < 60) return `${minutes}m`;
+      const hrs = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+      return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
+    };
+
+    const STORAGE_KEYS = { workoutTypes: 'workout-recorder-types', workoutLogs: 'workout-recorder-logs' };
+
+    function WorkoutRecorder() {
+      const [activeTab, setActiveTab] = useState('calendar');
+      const [workoutTypes, setWorkoutTypes] = useState([]);
+      const [workoutLogs, setWorkoutLogs] = useState({});
+      const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+      const [currentMonthIndex, setCurrentMonthIndex] = useState(new Date().getMonth());
+      const [selectedDay, setSelectedDay] = useState(null);
+      const [showAddWorkout, setShowAddWorkout] = useState(false);
+      const [newTypeName, setNewTypeName] = useState('');
+      const [newTypeColor, setNewTypeColor] = useState(PRESET_COLORS[0]);
+      const [editingType, setEditingType] = useState(null);
+      const [selectedWorkoutType, setSelectedWorkoutType] = useState('');
+      const [workoutHours, setWorkoutHours] = useState(0);
+      const [workoutMinutes, setWorkoutMinutes] = useState(30);
+      const carouselRef = useRef(null);
+
+      // Load data from localStorage on mount
+      useEffect(() => {
+        try {
+          const savedTypes = localStorage.getItem(STORAGE_KEYS.workoutTypes);
+          if (savedTypes) {
+            setWorkoutTypes(JSON.parse(savedTypes));
+          } else {
+            const defaultTypes = [
+              { id: generateId(), name: 'Running', color: '#FF6B6B' },
+              { id: generateId(), name: 'Weight Training', color: '#4ECDC4' },
+              { id: generateId(), name: 'Yoga', color: '#DDA0DD' },
+              { id: generateId(), name: 'Cycling', color: '#45B7D1' },
+              { id: generateId(), name: 'Swimming', color: '#96CEB4' }
+            ];
+            setWorkoutTypes(defaultTypes);
+          }
+          
+          const savedLogs = localStorage.getItem(STORAGE_KEYS.workoutLogs);
+          if (savedLogs) {
+            setWorkoutLogs(JSON.parse(savedLogs));
+          }
+        } catch (e) {
+          console.error('Error loading data:', e);
+        }
+      }, []);
+
+      // Save workout types to localStorage
+      useEffect(() => {
+        if (workoutTypes.length > 0) {
+          localStorage.setItem(STORAGE_KEYS.workoutTypes, JSON.stringify(workoutTypes));
+        }
+      }, [workoutTypes]);
+
+      // Save workout logs to localStorage
+      useEffect(() => {
+        localStorage.setItem(STORAGE_KEYS.workoutLogs, JSON.stringify(workoutLogs));
+      }, [workoutLogs]);
+
+      // Scroll to current month on load
+      useEffect(() => {
+        if (carouselRef.current) {
+          const monthWidth = carouselRef.current.offsetWidth;
+          carouselRef.current.scrollTo({ left: currentMonthIndex * monthWidth, behavior: 'auto' });
+        }
+      }, []);
+
+      const scrollToMonth = (index) => {
+        if (carouselRef.current) {
+          const monthWidth = carouselRef.current.offsetWidth;
+          carouselRef.current.scrollTo({ left: index * monthWidth, behavior: 'smooth' });
+        }
+        setCurrentMonthIndex(index);
+      };
+
+      const getDateKey = (year, month, day) => `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+      const addWorkoutType = () => {
+        if (!newTypeName.trim()) return;
+        if (editingType) {
+          setWorkoutTypes(types => types.map(t => t.id === editingType.id ? { ...t, name: newTypeName, color: newTypeColor } : t));
+          setEditingType(null);
+        } else {
+          setWorkoutTypes(types => [...types, { id: generateId(), name: newTypeName, color: newTypeColor }]);
+        }
+        setNewTypeName('');
+        setNewTypeColor(PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)]);
+      };
+
+      const deleteWorkoutType = (id) => setWorkoutTypes(types => types.filter(t => t.id !== id));
+      
+      const startEditType = (type) => {
+        setEditingType(type);
+        setNewTypeName(type.name);
+        setNewTypeColor(type.color);
+      };
+
+      const addWorkoutLog = () => {
+        if (!selectedWorkoutType || !selectedDay) return;
+        const totalMinutes = (workoutHours * 60) + workoutMinutes;
+        if (totalMinutes === 0) return;
+        const dateKey = getDateKey(selectedYear, currentMonthIndex, selectedDay);
+        const newLog = { id: generateId(), typeId: selectedWorkoutType, duration: totalMinutes, timestamp: Date.now() };
+        setWorkoutLogs(logs => ({ ...logs, [dateKey]: [...(logs[dateKey] || []), newLog] }));
+        setShowAddWorkout(false);
+        setSelectedWorkoutType('');
+        setWorkoutHours(0);
+        setWorkoutMinutes(30);
+      };
+
+      const removeWorkoutLog = (dateKey, logId) => {
+        setWorkoutLogs(logs => {
+          const dayLogs = logs[dateKey]?.filter(l => l.id !== logId) || [];
+          if (dayLogs.length === 0) {
+            const { [dateKey]: _, ...rest } = logs;
+            return rest;
+          }
+          return { ...logs, [dateKey]: dayLogs };
+        });
+      };
+
+      const getWorkoutTypeById = (id) => workoutTypes.find(t => t.id === id);
+
+      // Stats calculations
+      const getMonthStats = (year, month) => {
+        const stats = { totalMinutes: 0, totalWorkouts: 0, byType: {} };
+        const daysInMonth = getDaysInMonth(year, month);
+        for (let day = 1; day <= daysInMonth; day++) {
+          const dateKey = getDateKey(year, month, day);
+          const dayLogs = workoutLogs[dateKey] || [];
+          dayLogs.forEach(log => {
+            stats.totalMinutes += log.duration;
+            stats.totalWorkouts += 1;
+            if (!stats.byType[log.typeId]) stats.byType[log.typeId] = { minutes: 0, count: 0 };
+            stats.byType[log.typeId].minutes += log.duration;
+            stats.byType[log.typeId].count += 1;
+          });
+        }
+        return stats;
+      };
+
+      const getYearStats = (year) => {
+        const stats = { totalMinutes: 0, totalWorkouts: 0, byType: {}, byMonth: [] };
+        for (let month = 0; month < 12; month++) {
+          const monthStats = getMonthStats(year, month);
+          stats.totalMinutes += monthStats.totalMinutes;
+          stats.totalWorkouts += monthStats.totalWorkouts;
+          stats.byMonth.push(monthStats);
+          Object.entries(monthStats.byType).forEach(([typeId, data]) => {
+            if (!stats.byType[typeId]) stats.byType[typeId] = { minutes: 0, count: 0 };
+            stats.byType[typeId].minutes += data.minutes;
+            stats.byType[typeId].count += data.count;
+          });
+        }
+        return stats;
+      };
+
+      const currentMonthStats = getMonthStats(selectedYear, currentMonthIndex);
+      const yearStats = getYearStats(selectedYear);
+      const prevYearStats = getYearStats(selectedYear - 1);
+
+      // Calendar Day Component
+      const CalendarDay = ({ day, month, year }) => {
+        const dateKey = getDateKey(year, month, day);
+        const dayLogs = workoutLogs[dateKey] || [];
+        const hasWorkouts = dayLogs.length > 0;
+        const isToday = new Date().getDate() === day && new Date().getMonth() === month && new Date().getFullYear() === year;
+        const isSelected = selectedDay === day && currentMonthIndex === month;
+        const uniqueColors = [...new Set(dayLogs.map(l => getWorkoutTypeById(l.typeId)?.color).filter(Boolean))];
+
+        return (
+          <button
+            onClick={() => { setSelectedDay(day); setCurrentMonthIndex(month); }}
+            className={`relative aspect-square rounded-xl flex flex-col items-center justify-center transition-all duration-300 ease-out
+              ${isSelected ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-900 scale-105' : ''}
+              ${hasWorkouts ? 'bg-gradient-to-br from-slate-700 to-slate-800 shadow-lg' : 'bg-slate-800/50 hover:bg-slate-700/50'}
+              ${isToday ? 'border-2 border-amber-500/50' : 'border border-slate-700/50'}`}
+          >
+            <span className={`text-sm font-medium ${isToday ? 'text-amber-400' : hasWorkouts ? 'text-white' : 'text-slate-400'}`}>{day}</span>
+            {hasWorkouts && (
+              <div className="flex gap-0.5 mt-1">
+                {uniqueColors.slice(0, 3).map((color, i) => (
+                  <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+                ))}
+                {uniqueColors.length > 3 && <span className="text-[8px] text-slate-400">+{uniqueColors.length - 3}</span>}
+              </div>
+            )}
+          </button>
+        );
+      };
+
+      // Month Calendar Component
+      const MonthCalendar = ({ month, year }) => {
+        const daysInMonth = getDaysInMonth(year, month);
+        const firstDay = getFirstDayOfMonth(year, month);
+        const days = [];
+        for (let i = 0; i < firstDay; i++) days.push(<div key={`empty-${i}`} />);
+        for (let day = 1; day <= daysInMonth; day++) days.push(<CalendarDay key={day} day={day} month={month} year={year} />);
+
+        return (
+          <div className="min-w-full flex-shrink-0 px-2">
+            <div className="grid grid-cols-7 gap-1 mb-2">
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                <div key={i} className="text-center text-xs font-medium text-slate-500 py-2">{d}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1">{days}</div>
+          </div>
+        );
+      };
+
+      // Stats Bar Component
+      const StatsBar = ({ label, value, maxValue, color }) => {
+        const percentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
+        return (
+          <div className="space-y-1">
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-300">{label}</span>
+              <span className="text-slate-400">{formatDuration(value)}</span>
+            </div>
+            <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${percentage}%`, backgroundColor: color }} />
+            </div>
+          </div>
+        );
+      };
+
+      return (
+        <div className="min-h-screen bg-slate-900 text-white" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+          {/* Header */}
+          <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
+            <div className="max-w-2xl mx-auto px-4 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center glow-amber">
+                    <Icon name="Dumbbell" className="w-5 h-5 text-slate-900" />
+                  </div>
+                  <div>
+                    <h1 className="text-lg font-bold tracking-tight">IRONLOG</h1>
+                    <p className="text-xs text-slate-500" style={{ fontFamily: "'Space Mono', monospace" }}>Track your gains</p>
+                  </div>
+                </div>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i).map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </header>
+
+          {/* Tab Navigation */}
+          <nav className="sticky top-[73px] z-30 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
+            <div className="max-w-2xl mx-auto px-4">
+              <div className="flex gap-1 py-2">
+                {[
+                  { id: 'calendar', icon: 'Calendar', label: 'Calendar' },
+                  { id: 'stats', icon: 'BarChart3', label: 'Stats' },
+                  { id: 'workouts', icon: 'Dumbbell', label: 'Workouts' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-medium transition-all duration-200
+                      ${activeTab === tab.id ? 'bg-amber-500 text-slate-900' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+                  >
+                    <Icon name={tab.icon} className="w-4 h-4" />
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </nav>
+
+          {/* Main Content */}
+          <main className="max-w-2xl mx-auto px-4 py-6">
+            {/* Calendar Tab */}
+            {activeTab === 'calendar' && (
+              <div className="space-y-6 animate-slideUp">
+                <div className="flex items-center justify-between">
+                  <button onClick={() => scrollToMonth(Math.max(0, currentMonthIndex - 1))} className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">
+                    <Icon name="ChevronLeft" className="w-5 h-5" />
+                  </button>
+                  <h2 className="text-xl font-bold">{MONTHS[currentMonthIndex]}</h2>
+                  <button onClick={() => scrollToMonth(Math.min(11, currentMonthIndex + 1))} className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">
+                    <Icon name="ChevronRight" className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="flex justify-center gap-1">
+                  {MONTHS.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => scrollToMonth(i)}
+                      className={`w-2 h-2 rounded-full transition-all duration-200 ${i === currentMonthIndex ? 'bg-amber-500 w-6' : 'bg-slate-700 hover:bg-slate-600'}`}
+                    />
+                  ))}
+                </div>
+
+                <div
+                  ref={carouselRef}
+                  className="carousel-container flex overflow-x-auto"
+                  onScroll={(e) => {
+                    const scrollLeft = e.target.scrollLeft;
+                    const monthWidth = e.target.offsetWidth;
+                    const newIndex = Math.round(scrollLeft / monthWidth);
+                    if (newIndex !== currentMonthIndex) setCurrentMonthIndex(newIndex);
+                  }}
+                >
+                  {MONTHS.map((_, i) => <MonthCalendar key={i} month={i} year={selectedYear} />)}
+                </div>
+
+                {selectedDay && (
+                  <div className="bg-slate-800 rounded-2xl p-5 glow-card animate-slideUp">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold">{MONTHS[currentMonthIndex]} {selectedDay}, {selectedYear}</h3>
+                      <button
+                        onClick={() => setShowAddWorkout(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-900 rounded-lg font-medium text-sm transition-colors"
+                      >
+                        <Icon name="Plus" className="w-4 h-4" />
+                        Add Workout
+                      </button>
+                    </div>
+
+                    {(() => {
+                      const dateKey = getDateKey(selectedYear, currentMonthIndex, selectedDay);
+                      const dayLogs = workoutLogs[dateKey] || [];
+                      
+                      if (dayLogs.length === 0) {
+                        return <p className="text-slate-500 text-center py-8">No workouts recorded. Click "Add Workout" to get started!</p>;
+                      }
+
+                      return (
+                        <div className="space-y-2">
+                          {dayLogs.map(log => {
+                            const type = getWorkoutTypeById(log.typeId);
+                            if (!type) return null;
+                            return (
+                              <div key={log.id} className="flex items-center justify-between bg-slate-700/50 rounded-xl p-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: type.color }} />
+                                  <span className="font-medium">{type.name}</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-slate-400 text-sm flex items-center gap-1">
+                                    <Icon name="Clock" className="w-3 h-3" />
+                                    {formatDuration(log.duration)}
+                                  </span>
+                                  <button
+                                    onClick={() => removeWorkoutLog(dateKey, log.id)}
+                                    className="p-1.5 rounded-lg hover:bg-red-500/20 text-red-400 transition-colors"
+                                  >
+                                    <Icon name="Trash2" className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Stats Tab */}
+            {activeTab === 'stats' && (
+              <div className="space-y-6 animate-slideUp">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gradient-to-br from-amber-500/20 to-orange-500/20 rounded-2xl p-4 border border-amber-500/20">
+                    <div className="flex items-center gap-2 text-amber-400 mb-2">
+                      <Icon name="Flame" className="w-4 h-4" />
+                      <span className="text-xs font-medium uppercase tracking-wider">This Month</span>
+                    </div>
+                    <p className="text-2xl font-bold">{formatDuration(currentMonthStats.totalMinutes)}</p>
+                    <p className="text-sm text-slate-400">{currentMonthStats.totalWorkouts} workouts</p>
+                  </div>
+                  
+                  <div className="bg-gradient-to-br from-emerald-500/20 to-teal-500/20 rounded-2xl p-4 border border-emerald-500/20">
+                    <div className="flex items-center gap-2 text-emerald-400 mb-2">
+                      <Icon name="TrendingUp" className="w-4 h-4" />
+                      <span className="text-xs font-medium uppercase tracking-wider">This Year</span>
+                    </div>
+                    <p className="text-2xl font-bold">{formatDuration(yearStats.totalMinutes)}</p>
+                    <p className="text-sm text-slate-400">{yearStats.totalWorkouts} workouts</p>
+                  </div>
+                  
+                  <div className="bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-2xl p-4 border border-purple-500/20">
+                    <div className="flex items-center gap-2 text-purple-400 mb-2">
+                      <Icon name="Award" className="w-4 h-4" />
+                      <span className="text-xs font-medium uppercase tracking-wider">Avg/Month</span>
+                    </div>
+                    <p className="text-2xl font-bold">{formatDuration(Math.round(yearStats.totalMinutes / 12))}</p>
+                    <p className="text-sm text-slate-400">{Math.round(yearStats.totalWorkouts / 12)} workouts</p>
+                  </div>
+                  
+                  <div className="bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-2xl p-4 border border-blue-500/20">
+                    <div className="flex items-center gap-2 text-blue-400 mb-2">
+                      <Icon name="Target" className="w-4 h-4" />
+                      <span className="text-xs font-medium uppercase tracking-wider">vs Last Year</span>
+                    </div>
+                    <p className="text-2xl font-bold">
+                      {prevYearStats.totalMinutes > 0 
+                        ? `${yearStats.totalMinutes >= prevYearStats.totalMinutes ? '+' : ''}${Math.round(((yearStats.totalMinutes - prevYearStats.totalMinutes) / prevYearStats.totalMinutes) * 100)}%`
+                        : '—'}
+                    </p>
+                    <p className="text-sm text-slate-400">{formatDuration(prevYearStats.totalMinutes)} last year</p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-800 rounded-2xl p-5 glow-card">
+                  <h3 className="font-semibold mb-4">Monthly Activity</h3>
+                  <div className="flex items-end gap-1 h-40">
+                    {yearStats.byMonth.map((month, i) => {
+                      const maxMinutes = Math.max(...yearStats.byMonth.map(m => m.totalMinutes), 1);
+                      const height = (month.totalMinutes / maxMinutes) * 100;
+                      const isCurrentMonth = i === currentMonthIndex;
+                      return (
+                        <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                          <div className="relative w-full flex-1 flex items-end">
+                            <div
+                              className={`w-full rounded-t-md transition-all duration-300 ${isCurrentMonth ? 'bg-amber-500' : 'bg-slate-600 hover:bg-slate-500'}`}
+                              style={{ height: `${Math.max(height, 4)}%` }}
+                              title={`${MONTHS[i]}: ${formatDuration(month.totalMinutes)}`}
+                            />
+                          </div>
+                          <span className={`text-[10px] ${isCurrentMonth ? 'text-amber-400' : 'text-slate-500'}`}>{MONTHS[i].slice(0, 1)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-slate-800 rounded-2xl p-5 glow-card">
+                  <h3 className="font-semibold mb-4">Workout Types - {MONTHS[currentMonthIndex]}</h3>
+                  {Object.keys(currentMonthStats.byType).length === 0 ? (
+                    <p className="text-slate-500 text-center py-4">No workouts this month</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {Object.entries(currentMonthStats.byType)
+                        .sort((a, b) => b[1].minutes - a[1].minutes)
+                        .map(([typeId, data]) => {
+                          const type = getWorkoutTypeById(typeId);
+                          if (!type) return null;
+                          const maxMinutes = Math.max(...Object.values(currentMonthStats.byType).map(d => d.minutes));
+                          return <StatsBar key={typeId} label={`${type.name} (${data.count})`} value={data.minutes} maxValue={maxMinutes} color={type.color} />;
+                        })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-slate-800 rounded-2xl p-5 glow-card">
+                  <h3 className="font-semibold mb-4">Year Comparison</h3>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-4">
+                      <span className="w-16 text-sm text-slate-400">{selectedYear}</span>
+                      <div className="flex-1 h-6 bg-slate-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full" style={{ width: `${Math.min(100, (yearStats.totalMinutes / Math.max(yearStats.totalMinutes, prevYearStats.totalMinutes, 1)) * 100)}%` }} />
+                      </div>
+                      <span className="text-sm font-medium w-20 text-right">{formatDuration(yearStats.totalMinutes)}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="w-16 text-sm text-slate-400">{selectedYear - 1}</span>
+                      <div className="flex-1 h-6 bg-slate-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-slate-500 rounded-full" style={{ width: `${Math.min(100, (prevYearStats.totalMinutes / Math.max(yearStats.totalMinutes, prevYearStats.totalMinutes, 1)) * 100)}%` }} />
+                      </div>
+                      <span className="text-sm font-medium w-20 text-right">{formatDuration(prevYearStats.totalMinutes)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-800 rounded-2xl p-5 glow-card">
+                  <h3 className="font-semibold mb-4">Year Total by Type</h3>
+                  {Object.keys(yearStats.byType).length === 0 ? (
+                    <p className="text-slate-500 text-center py-4">No workouts recorded this year</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      {Object.entries(yearStats.byType)
+                        .sort((a, b) => b[1].minutes - a[1].minutes)
+                        .map(([typeId, data]) => {
+                          const type = getWorkoutTypeById(typeId);
+                          if (!type) return null;
+                          return (
+                            <div key={typeId} className="bg-slate-700/50 rounded-xl p-3 border-l-4" style={{ borderLeftColor: type.color }}>
+                              <p className="font-medium text-sm truncate">{type.name}</p>
+                              <p className="text-lg font-bold" style={{ color: type.color }}>{formatDuration(data.minutes)}</p>
+                              <p className="text-xs text-slate-400">{data.count} sessions</p>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Workouts Tab */}
+            {activeTab === 'workouts' && (
+              <div className="space-y-6 animate-slideUp">
+                <div className="bg-slate-800 rounded-2xl p-5 glow-card">
+                  <h3 className="font-semibold mb-4">Create Workout Type</h3>
+                  <div className="space-y-4">
+                    <input
+                      type="text"
+                      value={newTypeName}
+                      onChange={(e) => setNewTypeName(e.target.value)}
+                      placeholder="Workout name..."
+                      className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder-slate-400"
+                    />
+                    
+                    <div>
+                      <label className="text-sm text-slate-400 mb-2 block">Select Color</label>
+                      <div className="flex flex-wrap gap-2">
+                        {PRESET_COLORS.map(color => (
+                          <button
+                            key={color}
+                            onClick={() => setNewTypeColor(color)}
+                            className={`w-8 h-8 rounded-lg transition-all ${newTypeColor === color ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-800 scale-110' : ''}`}
+                            style={{ backgroundColor: color }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={addWorkoutType}
+                      disabled={!newTypeName.trim()}
+                      className="w-full py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 disabled:cursor-not-allowed text-slate-900 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Icon name={editingType ? 'Check' : 'Plus'} className="w-4 h-4" />
+                      {editingType ? 'Update Workout Type' : 'Add Workout Type'}
+                    </button>
+
+                    {editingType && (
+                      <button
+                        onClick={() => { setEditingType(null); setNewTypeName(''); setNewTypeColor(PRESET_COLORS[0]); }}
+                        className="w-full py-2 text-slate-400 hover:text-white transition-colors text-sm"
+                      >
+                        Cancel Editing
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-slate-800 rounded-2xl p-5 glow-card">
+                  <h3 className="font-semibold mb-4">Your Workout Types</h3>
+                  {workoutTypes.length === 0 ? (
+                    <p className="text-slate-500 text-center py-4">No workout types yet. Create one above!</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {workoutTypes.map(type => (
+                        <div key={type.id} className="flex items-center justify-between bg-slate-700/50 rounded-xl p-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: type.color }} />
+                            <span className="font-medium">{type.name}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => startEditType(type)} className="p-2 rounded-lg hover:bg-slate-600 text-slate-400 hover:text-white transition-colors">
+                              <Icon name="Edit3" className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => deleteWorkoutType(type.id)} className="p-2 rounded-lg hover:bg-red-500/20 text-red-400 transition-colors">
+                              <Icon name="Trash2" className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </main>
+
+          {/* Add Workout Modal */}
+          {showAddWorkout && (
+            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-md glow-card animate-slideUp">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-bold">Log Workout</h3>
+                  <button onClick={() => setShowAddWorkout(false)} className="p-2 rounded-lg hover:bg-slate-700 transition-colors">
+                    <Icon name="X" className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm text-slate-400 mb-2 block">Workout Type</label>
+                    {workoutTypes.length === 0 ? (
+                      <p className="text-slate-500 text-sm">No workout types created. Go to the Workouts tab to create one.</p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        {workoutTypes.map(type => (
+                          <button
+                            key={type.id}
+                            onClick={() => setSelectedWorkoutType(type.id)}
+                            className={`p-3 rounded-xl border-2 transition-all text-left ${selectedWorkoutType === type.id ? 'border-amber-500 bg-amber-500/10' : 'border-slate-600 hover:border-slate-500'}`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: type.color }} />
+                              <span className="text-sm font-medium truncate">{type.name}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-sm text-slate-400 mb-3 block">Duration</label>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 bg-slate-700 rounded-xl p-2">
+                          <button onClick={() => setWorkoutHours(h => Math.max(0, h - 1))} className="w-10 h-10 rounded-lg bg-slate-600 hover:bg-slate-500 flex items-center justify-center text-xl font-bold transition-colors">−</button>
+                          <div className="flex-1 text-center">
+                            <input
+                              type="number"
+                              min="0"
+                              max="24"
+                              value={workoutHours}
+                              onChange={(e) => setWorkoutHours(Math.max(0, Math.min(24, parseInt(e.target.value) || 0)))}
+                              className="w-full bg-transparent text-center text-2xl font-bold focus:outline-none"
+                            />
+                            <span className="text-xs text-slate-400">hours</span>
+                          </div>
+                          <button onClick={() => setWorkoutHours(h => Math.min(24, h + 1))} className="w-10 h-10 rounded-lg bg-slate-600 hover:bg-slate-500 flex items-center justify-center text-xl font-bold transition-colors">+</button>
+                        </div>
+                      </div>
+                      
+                      <span className="text-2xl font-bold text-slate-500">:</span>
+                      
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 bg-slate-700 rounded-xl p-2">
+                          <button onClick={() => setWorkoutMinutes(m => Math.max(0, m - 5))} className="w-10 h-10 rounded-lg bg-slate-600 hover:bg-slate-500 flex items-center justify-center text-xl font-bold transition-colors">−</button>
+                          <div className="flex-1 text-center">
+                            <input
+                              type="number"
+                              min="0"
+                              max="59"
+                              value={workoutMinutes}
+                              onChange={(e) => setWorkoutMinutes(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))}
+                              className="w-full bg-transparent text-center text-2xl font-bold focus:outline-none"
+                            />
+                            <span className="text-xs text-slate-400">minutes</span>
+                          </div>
+                          <button onClick={() => setWorkoutMinutes(m => Math.min(59, m + 5))} className="w-10 h-10 rounded-lg bg-slate-600 hover:bg-slate-500 flex items-center justify-center text-xl font-bold transition-colors">+</button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {[
+                        { label: '30m', h: 0, m: 30 },
+                        { label: '1h', h: 1, m: 0 },
+                        { label: '1h 30m', h: 1, m: 30 },
+                        { label: '2h', h: 2, m: 0 },
+                        { label: '3h', h: 3, m: 0 },
+                        { label: '4h', h: 4, m: 0 },
+                        { label: '6h', h: 6, m: 0 },
+                        { label: '8h', h: 8, m: 0 },
+                      ].map(preset => (
+                        <button
+                          key={preset.label}
+                          onClick={() => { setWorkoutHours(preset.h); setWorkoutMinutes(preset.m); }}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${workoutHours === preset.h && workoutMinutes === preset.m ? 'bg-amber-500 text-slate-900' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'}`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={addWorkoutLog}
+                    disabled={!selectedWorkoutType || (workoutHours === 0 && workoutMinutes === 0)}
+                    className="w-full py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 disabled:cursor-not-allowed text-slate-900 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Icon name="Check" className="w-4 h-4" />
+                    Save Workout ({formatDuration((workoutHours * 60) + workoutMinutes)})
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.render(<WorkoutRecorder />, document.getElementById('root'));
+  </script>
+</body>
+</html>
