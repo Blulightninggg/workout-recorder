@@ -54,7 +54,19 @@
 
     const generateId = () => Math.random().toString(36).substr(2, 9);
     const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    const PRESET_COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'];
+    const PRESET_COLORS = [
+      // Bright
+      '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', 
+      '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
+      // Medium
+      '#E74C3C', '#3498DB', '#2ECC71', '#F39C12', '#9B59B6',
+      '#1ABC9C', '#E91E63', '#00BCD4', '#FF9800', '#8BC34A',
+      // Dark
+      '#922B21', '#1A5276', '#145A32', '#7D6608', '#4A235A',
+      '#0E6655', '#880E4F', '#006064', '#E65100', '#33691E',
+      // Neutral
+      '#5D6D7E', '#839192', '#2C3E50', '#7F8C8D', '#34495E'
+    ];
     const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
     const getFirstDayOfMonth = (year, month) => new Date(year, month, 1).getDay();
     const formatDuration = (minutes) => {
