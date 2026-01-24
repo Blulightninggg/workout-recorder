@@ -2,8 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>IRONLOG - Workout Recorder</title>
+  
+  <!-- PWA Meta Tags -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="description" content="Track your workouts and fitness gains">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -70,7 +79,7 @@
       const [editingType, setEditingType] = useState(null);
       const [selectedWorkoutType, setSelectedWorkoutType] = useState('');
       const [workoutHours, setWorkoutHours] = useState(0);
-      const [workoutMinutes, setWorkoutMinutes] = useState(0);
+      const [workoutMinutes, setWorkoutMinutes] = useState(30);
       const carouselRef = useRef(null);
 
       useEffect(() => {
@@ -115,7 +124,7 @@
         if (totalMinutes === 0) return;
         const dateKey = getDateKey(selectedYear, currentMonthIndex, selectedDay);
         setWorkoutLogs(logs => ({ ...logs, [dateKey]: [...(logs[dateKey] || []), { id: generateId(), typeId: selectedWorkoutType, duration: totalMinutes, timestamp: Date.now() }] }));
-        setShowAddWorkout(false); setSelectedWorkoutType(''); setWorkoutHours(0); setWorkoutMinutes(0);
+        setShowAddWorkout(false); setSelectedWorkoutType(''); setWorkoutHours(0); setWorkoutMinutes(30);
       };
 
       const removeWorkoutLog = (dateKey, logId) => {
