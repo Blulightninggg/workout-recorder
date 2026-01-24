@@ -115,7 +115,7 @@
         if (totalMinutes === 0) return;
         const dateKey = getDateKey(selectedYear, currentMonthIndex, selectedDay);
         setWorkoutLogs(logs => ({ ...logs, [dateKey]: [...(logs[dateKey] || []), { id: generateId(), typeId: selectedWorkoutType, duration: totalMinutes, timestamp: Date.now() }] }));
-        setShowAddWorkout(false); setSelectedWorkoutType(''); setWorkoutHours(0); setWorkoutMinutes(30);
+        setShowAddWorkout(false); setSelectedWorkoutType(''); setWorkoutHours(0); setWorkoutMinutes(0);
       };
 
       const removeWorkoutLog = (dateKey, logId) => {
