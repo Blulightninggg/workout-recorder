@@ -16,13 +16,12 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; font-family: 'DM Sans', sans-serif; }
-    .carousel-container { scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-    .carousel-container::-webkit-scrollbar { display: none; }
-    .carousel-container > div { scroll-snap-align: start; }
+    .carousel-container { overflow: hidden; }
     .glow-amber { box-shadow: 0 0 40px rgba(251, 191, 36, 0.15); }
     .glow-card { box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3); }
     .glow-card-light { box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); }
@@ -66,8 +65,9 @@ function WorkoutRecorder() {
   const [workoutTypes, setWorkoutTypes] = useState([]);
   const [workoutLogs, setWorkoutLogs] = useState({});
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [currentMonthIndex, setCurrentMonthIndex] = useState(new Date().getMonth());
+  const [currentMonthIndex, setCurrentMonthIndex] = useState(() => new Date().getMonth());
   const [selectedDay, setSelectedDay] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(null);
   const [showAddWorkout, setShowAddWorkout] = useState(false);
   const [newTypeName, setNewTypeName] = useState('');
   const [newTypeColor, setNewTypeColor] = useState(PRESET_COLORS[0]);
@@ -76,7 +76,8 @@ function WorkoutRecorder() {
   const [workoutHours, setWorkoutHours] = useState(0);
   const [workoutMinutes, setWorkoutMinutes] = useState(0);
   const [darkMode, setDarkMode] = useState(true);
-  const carouselRef = useRef(null);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [newRecord, setNewRecord] = useState(null);
 
   useEffect(() => {
     try {
@@ -99,9 +100,8 @@ function WorkoutRecorder() {
   useEffect(() => { if (workoutTypes.length > 0) localStorage.setItem(STORAGE_KEYS.workoutTypes, JSON.stringify(workoutTypes)); }, [workoutTypes]);
   useEffect(() => { localStorage.setItem(STORAGE_KEYS.workoutLogs, JSON.stringify(workoutLogs)); }, [workoutLogs]);
   useEffect(() => { localStorage.setItem(STORAGE_KEYS.darkMode, JSON.stringify(darkMode)); }, [darkMode]);
-  useEffect(() => { if (carouselRef.current) carouselRef.current.scrollTo({ left: currentMonthIndex * carouselRef.current.offsetWidth, behavior: 'auto' }); }, []);
 
-  const scrollToMonth = (i) => { if (carouselRef.current) carouselRef.current.scrollTo({ left: i * carouselRef.current.offsetWidth, behavior: 'smooth' }); setCurrentMonthIndex(i); };
+  const goToMonth = (i) => { setCurrentMonthIndex(Math.max(0, Math.min(11, i))); };
   const getDateKey = (y, m, d) => y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
   
   const addWorkoutType = () => {
@@ -115,12 +115,27 @@ function WorkoutRecorder() {
   const startEditType = (t) => { setEditingType(t); setNewTypeName(t.name); setNewTypeColor(t.color); };
   
   const addWorkoutLog = () => {
-    if (!selectedWorkoutType || !selectedDay) return;
+    if (!selectedWorkoutType || !selectedDay || selectedMonth === null) return;
     const total = (workoutHours * 60) + workoutMinutes;
     if (total === 0) return;
-    const dk = getDateKey(selectedYear, currentMonthIndex, selectedDay);
+    
+    // Check if this is a new personal record
+    const currentRecords = getPersonalRecords();
+    const previousRecord = currentRecords[selectedWorkoutType] || 0;
+    const isNewRecord = total > previousRecord;
+    
+    const dk = getDateKey(selectedYear, selectedMonth, selectedDay);
     setWorkoutLogs(l => ({ ...l, [dk]: [...(l[dk] || []), { id: generateId(), typeId: selectedWorkoutType, duration: total, timestamp: Date.now() }] }));
     setShowAddWorkout(false); setSelectedWorkoutType(''); setWorkoutHours(0); setWorkoutMinutes(0);
+    
+    // Trigger confetti for new record
+    if (isNewRecord) {
+      const typeName = getWorkoutTypeById(selectedWorkoutType)?.name || 'Workout';
+      setNewRecord({ type: typeName, duration: total, previous: previousRecord });
+      setShowConfetti(true);
+      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#fbbf24', '#f97316', '#eab308', '#facc15'] });
+      setTimeout(() => { setShowConfetti(false); setNewRecord(null); }, 4000);
+    }
   };
   
   const removeWorkoutLog = (dk, lid) => {
@@ -194,10 +209,15 @@ function WorkoutRecorder() {
     const dayLogs = workoutLogs[dateKey] || [];
     const hasWorkouts = dayLogs.length > 0;
     const isToday = new Date().getDate() === day && new Date().getMonth() === month && new Date().getFullYear() === year;
-    const isSelected = selectedDay === day && currentMonthIndex === month;
+    const isSelected = selectedDay === day && selectedMonth === month;
     const uniqueColors = [...new Set(dayLogs.map(l => getWorkoutTypeById(l.typeId)?.color).filter(Boolean))];
+    const handleClick = () => {
+      console.log('Clicked day:', day, 'month:', month);
+      setSelectedDay(day);
+      setSelectedMonth(month);
+    };
     return (
-      <button onClick={() => { setSelectedDay(day); setCurrentMonthIndex(month); }}
+      <button onClick={handleClick}
         className={`relative aspect-square rounded-xl flex flex-col items-center justify-center transition-all duration-300 border
           ${isSelected ? 'ring-2 ring-amber-400 ring-offset-2 scale-105 ' + (darkMode ? 'ring-offset-slate-900' : 'ring-offset-gray-100') : ''}
           ${hasWorkouts ? (darkMode ? 'bg-gradient-to-br from-slate-700 to-slate-800 shadow-lg' : 'bg-white shadow border-gray-200') : (darkMode ? 'bg-slate-800/50 hover:bg-slate-700/50 border-slate-700/50' : 'bg-white hover:bg-gray-50 border-gray-200')}
@@ -262,22 +282,20 @@ function WorkoutRecorder() {
         {activeTab === 'calendar' && (
           <div className="space-y-6 animate-slideUp">
             <div className="flex items-center justify-between">
-              <button onClick={() => scrollToMonth(Math.max(0, currentMonthIndex - 1))} className={`p-2 rounded-lg ${th.btn}`}><Icon name="ChevronLeft" className="w-5 h-5" /></button>
+              <button onClick={() => goToMonth(currentMonthIndex - 1)} className={`p-2 rounded-lg ${th.btn}`}><Icon name="ChevronLeft" className="w-5 h-5" /></button>
               <h2 className="text-xl font-bold">{MONTHS[currentMonthIndex]}</h2>
-              <button onClick={() => scrollToMonth(Math.min(11, currentMonthIndex + 1))} className={`p-2 rounded-lg ${th.btn}`}><Icon name="ChevronRight" className="w-5 h-5" /></button>
+              <button onClick={() => goToMonth(currentMonthIndex + 1)} className={`p-2 rounded-lg ${th.btn}`}><Icon name="ChevronRight" className="w-5 h-5" /></button>
             </div>
-            <div className="flex justify-center gap-1">{MONTHS.map((_, i) => <button key={i} onClick={() => scrollToMonth(i)} className={`w-2 h-2 rounded-full transition-all ${i === currentMonthIndex ? 'bg-amber-500 w-6' : th.barBg}`} />)}</div>
-            <div ref={carouselRef} className="carousel-container flex overflow-x-auto" onScroll={(e) => { const ni = Math.round(e.target.scrollLeft / e.target.offsetWidth); if (ni !== currentMonthIndex) setCurrentMonthIndex(ni); }}>
-              {MONTHS.map((_, i) => <MonthCalendar key={i} month={i} year={selectedYear} />)}
-            </div>
-            {selectedDay && (
+            <div className="flex justify-center gap-1">{MONTHS.map((_, i) => <button key={i} onClick={() => goToMonth(i)} className={`w-2 h-2 rounded-full transition-all ${i === currentMonthIndex ? 'bg-amber-500 w-6' : th.barBg}`} />)}</div>
+            <MonthCalendar month={currentMonthIndex} year={selectedYear} />
+            {selectedDay && selectedMonth !== null && (
               <div className={`${th.card} rounded-2xl p-5 animate-slideUp`}>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold">{MONTHS[currentMonthIndex]} {selectedDay}, {selectedYear}</h3>
+                  <h3 className="font-semibold">{MONTHS[selectedMonth]} {selectedDay}, {selectedYear}</h3>
                   <button onClick={() => setShowAddWorkout(true)} className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-900 rounded-lg font-medium text-sm"><Icon name="Plus" className="w-4 h-4" />Add Workout</button>
                 </div>
                 {(() => {
-                  const dk = getDateKey(selectedYear, currentMonthIndex, selectedDay);
+                  const dk = getDateKey(selectedYear, selectedMonth, selectedDay);
                   const dl = workoutLogs[dk] || [];
                   if (dl.length === 0) return <p className={`${th.faint} text-center py-8`}>No workouts recorded. Click "Add Workout" to get started!</p>;
                   return (
@@ -506,6 +524,23 @@ function WorkoutRecorder() {
                 <Icon name="Check" className="w-4 h-4" />Save Workout ({formatDuration((workoutHours * 60) + workoutMinutes)})
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showConfetti && newRecord && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-slideUp">
+          <div className={`${th.card} rounded-2xl p-8 w-full max-w-sm text-center`}>
+            <div className="text-6xl mb-4">🏆</div>
+            <h2 className="text-2xl font-bold mb-2">New Personal Record!</h2>
+            <p className="text-amber-500 text-xl font-bold mb-2">{newRecord.type}</p>
+            <p className="text-3xl font-bold mb-2">{formatDuration(newRecord.duration)}</p>
+            {newRecord.previous > 0 && (
+              <p className={`${th.muted} text-sm`}>Previous: {formatDuration(newRecord.previous)}</p>
+            )}
+            <button onClick={() => { setShowConfetti(false); setNewRecord(null); }} className="mt-6 px-6 py-2 bg-amber-500 hover:bg-amber-400 text-slate-900 rounded-lg font-medium">
+              Awesome!
+            </button>
           </div>
         </div>
       )}
