@@ -306,6 +306,13 @@ function WorkoutRecorder() {
   const mwd = ys.byMonth.filter(m => m.totalWorkouts > 0).length;
   const avgDiv = Math.max(mwd, 1);
   const pr = getPersonalRecords();
+  
+  // Sort workout types by total time (most to least)
+  const sortedWorkoutTypes = [...workoutTypes].sort((a, b) => {
+    const aTime = Object.values(workoutLogs).flat().filter(l => l.typeId === a.id).reduce((sum, l) => sum + l.duration, 0);
+    const bTime = Object.values(workoutLogs).flat().filter(l => l.typeId === b.id).reduce((sum, l) => sum + l.duration, 0);
+    return bTime - aTime;
+  });
 
   const th = {
     bg: darkMode ? 'bg-slate-900' : 'bg-gray-100',
@@ -495,21 +502,21 @@ function WorkoutRecorder() {
         {/* History Tab - NEW */}
         {activeTab === 'history' && (
           <div className="space-y-6 animate-slideUp">
-            {workoutTypes.length === 0 ? (
+            {sortedWorkoutTypes.length === 0 ? (
               <p className={`${th.faint} text-center py-8`}>Create workout types first!</p>
             ) : (
               <>
                 <div className="flex items-center justify-between">
                   <button onClick={() => setHistoryTypeIndex(i => Math.max(0, i - 1))} className={`p-2 rounded-lg ${th.btn}`}><Icon name="ChevronLeft" className="w-5 h-5" /></button>
                   <div className="flex items-center gap-3">
-                    <div className="w-4 h-4 rounded-full" style={{ backgroundColor: workoutTypes[historyTypeIndex]?.color }} />
-                    <h2 className="text-xl font-bold">{workoutTypes[historyTypeIndex]?.name}</h2>
+                    <div className="w-4 h-4 rounded-full" style={{ backgroundColor: sortedWorkoutTypes[historyTypeIndex]?.color }} />
+                    <h2 className="text-xl font-bold">{sortedWorkoutTypes[historyTypeIndex]?.name}</h2>
                   </div>
-                  <button onClick={() => setHistoryTypeIndex(i => Math.min(workoutTypes.length - 1, i + 1))} className={`p-2 rounded-lg ${th.btn}`}><Icon name="ChevronRight" className="w-5 h-5" /></button>
+                  <button onClick={() => setHistoryTypeIndex(i => Math.min(sortedWorkoutTypes.length - 1, i + 1))} className={`p-2 rounded-lg ${th.btn}`}><Icon name="ChevronRight" className="w-5 h-5" /></button>
                 </div>
                 
                 <div className="flex justify-center gap-1">
-                  {workoutTypes.map((t, i) => (
+                  {sortedWorkoutTypes.map((t, i) => (
                     <button key={t.id} onClick={() => setHistoryTypeIndex(i)} 
                       className={`w-3 h-3 rounded-full transition-all`}
                       style={{ backgroundColor: i === historyTypeIndex ? t.color : (darkMode ? '#475569' : '#d1d5db') }} />
@@ -517,7 +524,7 @@ function WorkoutRecorder() {
                 </div>
 
                 {(() => {
-                  const type = workoutTypes[historyTypeIndex];
+                  const type = sortedWorkoutTypes[historyTypeIndex];
                   const stats = getTypeStats(type?.id);
                   const history = getWorkoutHistory(type?.id);
                   
