@@ -621,7 +621,7 @@ function WorkoutRecorder() {
           <div className="space-y-6 animate-slideUp">
             <div className="grid grid-cols-2 gap-3">
               <div className={`bg-gradient-to-br ${darkMode ? 'from-amber-500/20 to-orange-500/20 border-amber-500/20' : 'from-amber-100 to-orange-100 border-amber-200'} rounded-2xl p-4 border`}>
-                <div className="flex items-center gap-2 text-amber-500 mb-2"><Icon name="Flame" className="w-4 h-4" /><span className="text-xs font-medium uppercase tracking-wider">This Month</span></div>
+                <div className="flex items-center gap-2 text-amber-500 mb-2"><Icon name="Flame" className="w-4 h-4" /><span className="text-xs font-medium uppercase tracking-wider">{MONTHS[currentMonthIndex]}</span></div>
                 <p className="text-2xl font-bold">{formatDuration(cms.totalMinutes)}</p>
                 <p className={`text-sm ${th.muted}`}>{cms.totalWorkouts} workouts</p>
               </div>
@@ -644,21 +644,35 @@ function WorkoutRecorder() {
 
             <div className={`${th.card} rounded-2xl p-5`}>
               <h3 className="font-semibold mb-4">Monthly Activity</h3>
+              <p className={`text-xs ${th.muted} mb-3`}>Tap a month to view its stats</p>
               <div className="h-40 flex gap-1">
                 {ys.byMonth.map((m, i) => {
                   const max = Math.max(...ys.byMonth.map(x => x.totalMinutes), 1);
                   const h = m.totalMinutes > 0 ? Math.max((m.totalMinutes / max) * 100, 10) : 0;
                   const isCur = i === currentMonthIndex;
                   return (
-                    <div key={i} className="flex-1 flex flex-col items-center">
+                    <button key={i} onClick={() => setCurrentMonthIndex(i)} className="flex-1 flex flex-col items-center cursor-pointer hover:opacity-80 transition-opacity">
                       <div className="flex-1 w-full flex flex-col justify-end items-center pb-1">
                         {m.totalMinutes > 0 ? <div className={`w-4 sm:w-6 rounded-t-md ${isCur ? 'bg-amber-500' : th.barFill}`} style={{ height: h + '%' }} title={MONTHS[i] + ': ' + formatDuration(m.totalMinutes)} /> : <div className={`w-4 sm:w-6 h-1 rounded-full ${th.barBg}`} />}
                       </div>
                       <span className={`text-[10px] ${isCur ? 'text-amber-500' : th.faint}`}>{MONTHS[i][0]}</span>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
+            </div>
+
+            <div className={`${th.card} rounded-2xl p-5`}>
+              <h3 className="font-semibold mb-4">Workout Types - {MONTHS[currentMonthIndex]}</h3>
+              {Object.keys(cms.byType).length === 0 ? <p className={`${th.faint} text-center py-4`}>No workouts this month</p> : (
+                <div className="space-y-3">
+                  {Object.entries(cms.byType).sort((a, b) => b[1].minutes - a[1].minutes).map(([tid, d]) => {
+                    const t = getWorkoutTypeById(tid);
+                    if (!t) return null;
+                    return <StatsBar key={tid} label={t.name + ' (' + d.count + ')'} value={d.minutes} maxValue={Math.max(...Object.values(cms.byType).map(x => x.minutes))} color={t.color} />;
+                  })}
+                </div>
+              )}
             </div>
 
             <div className={`${th.card} rounded-2xl p-5`}>
